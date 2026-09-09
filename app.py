@@ -76,11 +76,20 @@ def load_voice_settings():
 
             if ":" in line:
                 key, value = line.split(":", 1)
-                key = key.strip().upper()
+                full_key = key.strip().upper()
 
-                if key in KEY_MAP:
-                    field = KEY_MAP[key]
+                # В voice.md ключ может быть полным: «ТОН ПОСТА», а в KEY_MAP
+                # коротким: «ТОН». Ищем совпадение по подстроке первой части.
+                field = None
+                for map_key, map_field in KEY_MAP.items():
+                    if map_key in full_key:
+                        field = map_field
+                        break
+
+                if field:
                     value = value.strip()
+                    # Отрезаем инлайновый комментарий: «дружелюбный # пояснение»
+                    value = value.split("#", 1)[0].strip()
 
                     if field == "emoji_count":
                         # Количество эмодзи делаем числом от 0 до 5
