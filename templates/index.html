@@ -1,0 +1,104 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Генератор постов по новостям — ИИ и технологии</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}" />
+</head>
+<body>
+  <div class="container">
+
+    <!-- Шапка страницы -->
+    <header class="header">
+      <h1>Генератор постов по новостям ✍️</h1>
+      <p class="subtitle">Вставь ссылку на новость или статью — нейросеть изучит текст и напишет живой пост.</p>
+    </header>
+
+    <!-- Блок с ошибкой, если что-то пошло не так -->
+    {% if error %}
+      <div class="card error-box">⚠️ {{ error }}</div>
+    {% endif %}
+
+    <!-- Информационное сообщение (например, что пост собран по описанию) -->
+    {% if notice %}
+      <div class="card notice-box">ℹ️ {{ notice }}</div>
+    {% endif %}
+
+    <!-- Форма: пользователь вставляет ссылку на товар -->
+    <form method="POST" action="/generate" class="card post-form" id="post-form">
+
+      <!-- Ссылка на товар (обязательное, помечено звёздочкой) -->
+      <div class="field">
+        <label for="url">Ссылка на новость/статью <span class="required">*</span></label>
+        <input type="url" id="url" name="url" autofocus required
+               placeholder="https://example.com/article/123"
+               value="{{ form.url if form }}" />
+      </div>
+
+      <!-- Дополнительная информация (необязательное) -->
+      <div class="field">
+        <label for="extra">Дополнительно о новости <span class="optional">(необязательно)</span></label>
+        <textarea id="extra" name="extra" rows="3"
+                  placeholder="Суть новости своими словами, важные акценты, своё мнение — модель учтёт это в посте">{{ form.extra if form }}</textarea>
+      </div>
+
+      <!-- Выбор настроения поста -->
+      <div class="field">
+        <span class="label">Настроение поста</span>
+        <div class="emotions">
+          {% for value, info in emotions.items() %}
+            <input type="radio" id="emotion_{{ value }}" name="emotion" value="{{ value }}"
+                   {% if (form and form.emotion == value) or (not form and loop.first) %}checked{% endif %}>
+            <label for="emotion_{{ value }}" class="mood-chip">{{ info.label }}</label>
+          {% endfor %}
+        </div>
+      </div>
+
+      <!-- Выбор модели -->
+      <div class="field">
+        <label for="model">Модель</label>
+        <select id="model" name="model">
+          {% for m in models %}
+            <option value="{{ m.id }}"
+                    {% if (form and form.model == m.id) or (not form and m.id == default_model) %}selected{% endif %}>
+              {{ m.name }} · {{ m.price }}/млн токенов</option>
+          {% endfor %}
+        </select>
+        <p class="hint">Цены: вход / выход за миллион токенов (https://ollama.com/pricing).</p>
+      </div>
+
+      <!-- Кнопка «Сформировать пост» -->
+      <button type="submit" id="submit-btn" class="btn-primary">Сформировать пост</button>
+    </form>
+
+    <!-- Блок с готовым постом -->
+    <section class="card output" id="result">
+      <h2>Готовый пост</h2>
+
+      {% if post %}
+        <!-- Информация о том, что читала модель -->
+        {% if page %}
+          <p class="meta">📄 Страница: {{ page.title }}</p>
+        {% endif %}
+
+        <!-- Текст поста от модели. Фильтр autoescape экранирует HTML-код,
+             а настоящие переводы строк показывает CSS
+             (white-space: pre-wrap в style.css). -->
+        <div class="post-box" id="generated-post">{{ post }}</div>
+
+        <!-- Кнопка «Скопировать пост» -->
+        <button type="button" id="copy-btn" class="btn-secondary">Скопировать пост</button>
+
+        <!-- Сообщение «Пост скопирован» (по умолчанию скрыто) -->
+        <p id="copy-msg" class="copy-msg">Пост скопирован ✅</p>
+      {% else %}
+        <p class="placeholder">... Здесь появится готовый пост по этой новости ...</p>
+      {% endif %}
+    </section>
+
+  </div>
+
+  <script src="{{ url_for('static', filename='script.js') }}"></script>
+</body>
+</html>

@@ -1,0 +1,252 @@
+/* ============================================================
+   Стили генератора постов
+   ============================================================ */
+
+/* Общие настройки: шрифт и аккуратные цвета */
+:root {
+  --bg-start: #667eea;    /* фиолетовый (начало градиента) */
+  --bg-end: #764ba2;      /* фиолетовый (конец градиента)    */
+  --accent: #667eea;      /* цвет кнопок и акцентов           */
+  --text: #2d2d2d;        /* основной цвет текста             */
+  --muted: #8a8a8a;       /* приглушённый цвет подписей       */
+  --card-bg: #ffffff;     /* цвет карточек                    */
+  --radius: 14px;         /* скругление углов                 */
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  font-family: "Segoe UI", Roboto, Arial, sans-serif;
+  background: linear-gradient(135deg, var(--bg-start), var(--bg-end));
+  min-height: 100vh;
+  padding: 24px 16px 48px;
+  color: var(--text);
+}
+
+/* Центрируем всю страницу и ограничиваем ширину */
+.container {
+  max-width: 720px;
+  margin: 0 auto;
+}
+
+/* ---------- Шапка ---------- */
+.header {
+  text-align: center;
+  color: #ffffff;
+  margin-bottom: 24px;
+}
+
+.header h1 {
+  margin: 0 0 6px;
+  font-size: 28px;
+}
+
+.subtitle {
+  margin: 0;
+  opacity: 0.9;
+}
+
+/* ---------- Карточки (форма и блок поста) ---------- */
+.card {
+  background: var(--card-bg);
+  border-radius: var(--radius);
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.18);
+  padding: 24px;
+  margin-bottom: 24px;
+}
+
+.card h2 {
+  margin: 0 0 16px;
+  font-size: 20px;
+}
+
+/* ---------- Поля формы ---------- */
+.field {
+  margin-bottom: 18px;
+}
+
+.field label,
+.field .label {
+  display: block;
+  margin-bottom: 6px;
+  font-weight: 600;
+  font-size: 14px;
+}
+
+/* Звёздочка у обязательного поля и подпись необязательного */
+.required {
+  color: #e0245e;
+}
+
+.optional {
+  color: var(--muted);
+  font-weight: 400;
+}
+
+input[type="text"],
+input[type="url"],
+select,
+textarea {
+  width: 100%;
+  padding: 12px 14px;
+  border: 2px solid #e3e3e3;
+  border-radius: 10px;
+  font-size: 15px;
+  font-family: inherit;
+  transition: border-color 0.2s;
+  outline: none;
+}
+
+input[type="text"]:focus,
+input[type="url"]:focus,
+select:focus,
+textarea:focus {
+  border-color: var(--accent);
+}
+
+select {
+  background: #fff;
+  cursor: pointer;
+}
+
+textarea {
+  resize: vertical;
+}
+
+/* Небольшая подпись-подсказка под полями */
+.hint {
+  margin: 6px 0 0;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+/* Блок с ошибкой (отдельная карточка над формой) */
+.error-box {
+  border-left: 6px solid #e0245e;
+  color: #c2185b;
+  font-weight: 600;
+}
+
+/* Информационная карточка (уведомления) */
+.notice-box {
+  border-left: 6px solid var(--accent);
+  color: #4a5bd0;
+  font-weight: 600;
+}
+
+/* ---------- Выбор настроения поста ---------- */
+.emotions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+/* Прячем сами радиокнопки, оставляем только нажимаемые карточки */
+input[type="radio"] {
+  display: none;
+}
+
+.mood-chip {
+  display: inline-block;
+  padding: 10px 16px;
+  border: 2px solid #e3e3e3;
+  border-radius: 999px;
+  cursor: pointer;
+  font-size: 14px;
+  font-weight: 500;
+  transition: all 0.2s;
+  user-select: none;
+}
+
+/* Выбранное настроение подсвечивается цветом */
+input[type="radio"]:checked + .mood-chip {
+  border-color: var(--accent);
+  background: #eef1ff;
+  color: var(--accent);
+}
+
+/* ---------- Кнопки ---------- */
+.btn-primary {
+  width: 100%;
+  padding: 14px;
+  border: none;
+  border-radius: 10px;
+  background: var(--accent);
+  color: #ffffff;
+  font-size: 16px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: transform 0.1s, box-shadow 0.2s;
+}
+
+.btn-primary:hover {
+  box-shadow: 0 6px 18px rgba(102, 126, 234, 0.4);
+}
+
+/* Кнопка в состоянии «готовим…» */
+.btn-primary.loading,
+.btn-primary:disabled {
+  opacity: 0.6;
+  cursor: progress;
+}
+
+.btn-primary:active {
+  transform: translateY(1px);
+}
+
+.btn-secondary {
+  margin-top: 14px;
+  padding: 12px 24px;
+  border: 2px solid var(--accent);
+  border-radius: 10px;
+  background: transparent;
+  color: var(--accent);
+  font-size: 15px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.btn-secondary:hover {
+  background: var(--accent);
+  color: #ffffff;
+}
+
+/* ---------- Блок «Готовый пост» ---------- */
+.meta {
+  margin: 0 0 12px;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.post-box {
+  background: #f7f8ff;
+  border: 2px solid #e3e8ff;
+  border-radius: 10px;
+  padding: 16px;
+  white-space: pre-wrap; /* переносим длинные строки */
+  line-height: 1.6;
+  font-size: 15px;
+}
+
+.placeholder {
+  color: var(--muted);
+  text-align: center;
+  font-style: italic;
+}
+
+/* ---------- Сообщение «Пост скопирован» ---------- */
+.copy-msg {
+  display: none;              /* скрыто по умолчанию */
+  margin: 12px 0 0;
+  color: #22a45d;
+  font-weight: 600;
+}
+
+/* Класс .visible добавляется через JS, чтобы показать сообщение */
+.copy-msg.visible {
+  display: block;
+}
