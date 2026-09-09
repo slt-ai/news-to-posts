@@ -26,6 +26,7 @@ site-generation-post/
 ├── templates/index.html   # страница с формой и блоком поста
 ├── static/style.css       # стили
 ├── static/script.js       # копирование поста и состояние «Готовим…»
+├── screenshots/           # скриншоты-примеры генерации
 ├── voice.md               # настройки «голоса» поста
 ├── .env                   # локальные настройки (ключ API!) — НЕ в Git
 ├── .env.example           # шаблон настроек для копирования
@@ -33,6 +34,14 @@ site-generation-post/
 ├── start.bat              # запуск в один клик (Windows)
 └── README.md
 ```
+
+---
+
+## Примеры генерации
+
+![Пример генерации 1](screenshots/screenshot-1.png)
+
+![Пример генерации 2](screenshots/screenshot-2.png)
 
 ---
 
