@@ -39,9 +39,10 @@ site-generation-post/
 
 ## Примеры генерации
 
-![Пример генерации 1](screenshots/screenshot-1.png)
-
-![Пример генерации 2](screenshots/screenshot-2.png)
+<div style="display:flex; justify-content:center; gap:8px;">
+  <img src="screenshots/screenshot-1.jpg" alt="Пример генерации 1" width="45%">
+  <img src="screenshots/screenshot-2.jpg" alt="Пример генерации 2" width="45%">
+</div>
 
 ---
 
