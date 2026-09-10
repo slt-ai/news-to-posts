@@ -245,7 +245,7 @@ def fetch_news_page(url):
 # ЧАСТЬ 4. ЗАПРОС К ЯЗЫКОВОЙ МОДЕЛИ
 # ============================================================
 
-def build_system_prompt(settings, emotion_id):
+def build_system_prompt(settings, emotion_id, source_url):
     """Системное задание для модели: голос, настроение, правила."""
 
     emotion = EMOTIONS[emotion_id]
@@ -270,6 +270,7 @@ def build_system_prompt(settings, emotion_id):
 - Количество эмодзи в посте: {settings['emoji_count']}, не разбрасывай эмодзи по каждому абзацу.
 - {headline_hint}.
 - В конце поста добавь 2–4 подходящих хештега (#ИИ, #технологии и подобные).
+- В самом конце поста, отдельной строкой, обязательно добавь ссылку на оригинальную новость: {source_url}.
 - Разбивай текст на абзацы с пустыми строками между ними.
 - Верни только текст поста, без пояснений и вступлений."""
 
@@ -288,7 +289,8 @@ def build_user_prompt(page, extra_note, url):
 Содержимое страницы:
 {text}
 
-Напиши готовый пост для соцсетей. Только текст поста."""
+Напиши готовый пост для соцсетей. Только текст поста.
+Обязательно заверши пост отдельной строкой со ссылкой на источник: {url}."""
 
 
 def build_user_prompt_from_note(extra_note, url):
@@ -301,7 +303,8 @@ def build_user_prompt_from_note(extra_note, url):
 
 {extra_note.strip()}
 
-Напиши готовый пост для соцсетей. Только текст поста."""
+Напиши готовый пост для соцсетей. Только текст поста.
+Обязательно заверши пост отдельной строкой со ссылкой на источник: {url}."""
 
 
 def build_api_error(response):
@@ -714,7 +717,7 @@ def generate():
         )
 
     # Шаг 2: собираем задание для модели
-    system_prompt = build_system_prompt(settings, emotion_id)
+    system_prompt = build_system_prompt(settings, emotion_id, url)
 
     if page is not None:
         # Страница открылась — модель читает её текст + заметку пользователя
