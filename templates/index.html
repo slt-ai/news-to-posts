@@ -103,9 +103,13 @@
           <!-- Кнопка «Скопировать пост» -->
           <button type="button" id="copy-btn" class="btn-secondary">Скопировать пост</button>
 
+          <!-- Карандаш: правим текст поста прямо на странице -->
+          <button type="button" id="edit-btn" class="btn-secondary">✏️ Редактировать</button>
+          <button type="button" id="cancel-edit-btn" class="btn-danger" hidden>Отмена</button>
+
           <!-- Кнопка «Опубликовать пост» — сразу на стену сообщества -->
           <form method="POST" action="/publish" class="inline-form" onsubmit="return confirm('Опубликовать этот пост на стене сообщества прямо сейчас?')">
-            <input type="hidden" name="post" value="{{ post }}" />
+            <textarea hidden name="post" class="js-current-post">{{ post }}</textarea>
             <input type="hidden" name="url" value="{{ form.url if form }}" />
             <input type="hidden" name="extra" value="{{ form.extra if form }}" />
             <input type="hidden" name="emotion" value="{{ form.emotion if form else 'joy' }}" />
@@ -115,7 +119,7 @@
 
           <!-- Кнопка «В избранное» -->
           <form method="POST" action="/favorites/add" class="inline-form">
-            <input type="hidden" name="post" value="{{ post }}" />
+            <textarea hidden name="post" class="js-current-post">{{ post }}</textarea>
             <input type="hidden" name="url" value="{{ form.url if form }}" />
             <input type="hidden" name="emotion" value="{{ form.emotion if form else 'joy' }}" />
             <input type="hidden" name="model" value="{{ form.model if form else default_model }}" />
@@ -125,7 +129,7 @@
 
         <!-- Отложенная публикация: выбор конкретного времени -->
         <form method="POST" action="/schedule" class="schedule-form">
-          <input type="hidden" name="post" value="{{ post }}" />
+          <textarea hidden name="post" class="js-current-post">{{ post }}</textarea>
           <input type="hidden" name="url" value="{{ form.url if form }}" />
           <input type="hidden" name="extra" value="{{ form.extra if form }}" />
           <input type="hidden" name="emotion" value="{{ form.emotion if form else 'joy' }}" />
@@ -140,6 +144,9 @@
 
         <!-- Сообщение «Пост скопирован» (по умолчанию скрыто) -->
         <p id="copy-msg" class="copy-msg">Пост скопирован ✅</p>
+
+        <!-- Сообщение о сохранении правок (по умолчанию скрыто) -->
+        <p id="edit-msg" class="copy-msg">Изменения сохранены ✅</p>
       {% else %}
         <p class="placeholder">... Здесь появится готовый пост по этой новости ...</p>
       {% endif %}
@@ -161,7 +168,7 @@
             <div class="post-box small">{{ p.text or "(без текста)" }}</div>
             <form method="POST" action="/scheduled/delete" class="inline-form" onsubmit="return confirm('Отменить этот отложенный пост?')">
               <input type="hidden" name="post_id" value="{{ p.id }}" />
-              <input type="hidden" name="post" value="{{ post or '' }}" />
+              <textarea hidden name="post" class="js-current-post">{{ post or '' }}</textarea>
               <button type="submit" class="btn-danger">Отменить ❌</button>
             </form>
           </div>
@@ -182,12 +189,12 @@
             <div class="action-row">
               <button type="button" class="btn-secondary btn-copy-fav">Копировать</button>
               <form method="POST" action="/publish" class="inline-form" onsubmit="return confirm('Опубликовать этот пост из избранного?')">
-                <input type="hidden" name="post" value="{{ f.text }}" />
+                <textarea hidden name="post">{{ f.text }}</textarea>
                 <button type="submit" class="btn-publish small-btn" {% if not vk_configured %}disabled title="Сначала подключи ВКонтакте"{% endif %}>🚀 Опубликовать</button>
               </form>
               <form method="POST" action="/favorites/delete" class="inline-form">
                 <input type="hidden" name="fav_id" value="{{ f.id }}" />
-                <input type="hidden" name="post" value="{{ post or '' }}" />
+                <textarea hidden name="post" class="js-current-post">{{ post or '' }}</textarea>
                 <button type="submit" class="btn-danger">Удалить</button>
               </form>
             </div>
