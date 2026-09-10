@@ -19,12 +19,16 @@
   - Документация: https://docs.ollama.com/cloud и https://docs.ollama.com/api/chat
 """
 
+import json  # храним избранное в JSON-файле
 import os  # читаем настройки из .env
+import time  # для отложенных постов (unix-время)
+import uuid  # уникальные id для избранного
+from datetime import datetime  # разбор даты отложенного поста
 
 import requests  # ходим на сайты и в API модели
 from bs4 import BeautifulSoup  # вытаскиваем текст из HTML страницы новости
 from dotenv import load_dotenv  # подключаем чтение файла .env
-from flask import Flask, render_template, request
+from flask import Flask, redirect, render_template, request, url_for
 
 # Читаем настройки запуска из файла .env (ключ API, хост, порт, debug)
 load_dotenv()
@@ -34,6 +38,13 @@ app = Flask(__name__)
 # Путь к файлу настроек «голоса» поста. Кладём рядом с app.py.
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))  # папка проекта
 VOICE_FILE = os.path.join(BASE_DIR, "voice.md")
+
+# Папка и файл для избранного. JSON — проще всего, без базы данных.
+DATA_DIR = os.path.join(BASE_DIR, "data")
+FAVORITES_FILE = os.path.join(DATA_DIR, "favorites.json")
+
+# Версия API ВКонтакте. 5.199 — стабильная на 2025–2026 годы.
+VK_API_VERSION = "5.199"
 
 
 # ============================================================
@@ -394,22 +405,244 @@ def ask_ollama(system_prompt, user_prompt, model):
 
 
 # ============================================================
-# ЧАСТЬ 5. СТРАНИЦЫ САЙТА
+# ЧАСТЬ 5. ВКОНТАКТЕ: ПУБЛИКАЦИЯ И ОТЛОЖЕННЫЕ ПОСТЫ
+# ============================================================
+# Как это работает простыми словами:
+# - У сообщества ВК есть числовой ID (например 123456789).
+# - У тебя есть секретный ключ (токен) — как пароль для программы.
+# - Программа говорит ВК: «опубликуй этот текст на стене -ID»,
+#   ВК слушается, если ключ правильный и у него есть права.
+# - Если указать время в будущем (publish_date), ВК сам
+#   придержит пост и выложит его позже — это и есть «отложка».
+# Документация: https://dev.vk.com/ru/method/wall.post
+
+
+class VkError(Exception):
+    """Ошибка: не получилось поговорить с ВКонтакте."""
+
+
+def get_vk_settings():
+    """
+    Читает настройки ВК из .env и говорит, всё ли заполнено.
+
+    Возвращает словарь:
+    {"token": "...", "group_id": "...", "configured": True/False}
+    """
+    token = os.getenv("VK_ACCESS_TOKEN", "").strip()
+    group_id = os.getenv("VK_GROUP_ID", "").strip()
+    # Убираем минус в начале, если пользователь вписал -12345
+    group_id = group_id.lstrip("-").strip()
+    configured = bool(token and group_id and group_id.isdigit())
+    return {"token": token, "group_id": group_id, "configured": configured}
+
+
+def vk_api(method, params):
+    """
+    Один вызов метода VK API. Например vk_api("wall.post", {...}).
+
+    Если ВК вернул {"error": {...}} — превращаем это в понятный VkError.
+    """
+    vk = get_vk_settings()
+    if not vk["configured"]:
+        raise VkError(
+            "ВКонтакте не подключён: заполни VK_ACCESS_TOKEN и VK_GROUP_ID "
+            "в файле .env (подробности — в файле ВК_ИНСТРУКЦИЯ.md)."
+        )
+    url = f"https://api.vk.com/method/{method}"
+    payload = dict(params)
+    payload["access_token"] = vk["token"]
+    payload["v"] = VK_API_VERSION
+    try:
+        response = requests.post(url, data=payload, timeout=20)
+        response.raise_for_status()
+    except requests.RequestException as err:
+        raise VkError(f"Не получилось связаться с ВКонтакте: {err}")
+    try:
+        data = response.json()
+    except ValueError:
+        raise VkError("ВКонтакте вернул непонятный ответ (не JSON).")
+    if "error" in data:
+        err = data["error"]
+        code = err.get("error_code", "?")
+        msg = err.get("error_msg", "неизвестная ошибка")
+        # Частые коды — объясняем по-человечески
+        hints = {
+            5: "ключ (токен) неправильный или просрочен — создай новый",
+            7: "нет прав на это действие — выдай токену права на стену и фото",
+            15: "доступ запрещён — проверь, что ты админ сообщества",
+            100: "неверный параметр — обычно это ID сообщества",
+            214: "постить на стену запрещено — включи стену в настройках сообщества",
+        }
+        hint = hints.get(code, "")
+        extra = f" Подсказка: {hint}." if hint else ""
+        raise VkError(f"ВКонтакте ответил ошибкой {code}: {msg}.{extra}")
+    return data.get("response", {})
+
+
+def vk_publish_post(text, publish_timestamp=None):
+    """
+    Публикует текст на стене сообщества.
+
+    - text: текст поста (не пустой).
+    - publish_timestamp: unix-время (секунды) для отложки или None = сейчас.
+      ВК требует, чтобы отложка была минимум на 2 минуты позже «сейчас»
+      и не позже чем через год.
+    Возвращает id созданного поста в ВК.
+    """
+    text = (text or "").strip()
+    if not text:
+        raise VkError("Текст поста пустой — нечего публиковать.")
+    vk = get_vk_settings()
+    params = {
+        "owner_id": f"-{vk['group_id']}",  # минус = стена сообщества, а не человека
+        "from_group": 1,  # пост от имени сообщества
+        "message": text,
+    }
+    if publish_timestamp:
+        now = int(time.time())
+        if publish_timestamp <= now + 2 * 60:
+            raise VkError("Выбери время хотя бы на 2 минуты позже текущего.")
+        if publish_timestamp > now + 365 * 24 * 3600:
+            raise VkError("ВКонтакте не откладывает посты больше чем на год вперёд.")
+        params["publish_date"] = int(publish_timestamp)
+    result = vk_api("wall.post", params)
+    return result.get("post_id")
+
+
+def vk_get_postponed(count=20):
+    """
+    Возвращает список отложенных постов сообщества (их держит сам ВК).
+    Каждый элемент: {"id": ..., "text": ..., "date": unix-время}.
+    """
+    vk = get_vk_settings()
+    if not vk["configured"]:
+        return []
+    result = vk_api(
+        "wall.get",
+        {
+            "owner_id": f"-{vk['group_id']}",
+            "filter": "postponed",  # только отложенные
+            "count": max(1, min(50, count)),
+        },
+    )
+    items = result.get("items", []) if isinstance(result, dict) else []
+    postponed = []
+    for item in items:
+        postponed.append(
+            {
+                "id": item.get("id"),
+                "text": item.get("text", ""),
+                "date": item.get("date"),
+            }
+        )
+    # Сортируем по дате: ближайшие сверху
+    postponed.sort(key=lambda p: p["date"] or 0)
+    return postponed
+
+
+def vk_delete_post(post_id):
+    """Удаляет (отменяет) отложенный пост по его id."""
+    vk = get_vk_settings()
+    vk_api("wall.delete", {"owner_id": f"-{vk['group_id']}", "post_id": int(post_id)})
+
+
+# ============================================================
+# ЧАСТЬ 6. ИЗБРАННОЕ (сохранение постов локально)
+# ============================================================
+# Избранное хранится в файле data/favorites.json — это просто список.
+# База данных не нужна: постов немного, JSON хватает за глаза.
+
+
+def load_favorites():
+    """Читает файл избранного. Если файла нет — возвращает пустой список."""
+    if not os.path.exists(FAVORITES_FILE):
+        return []
+    try:
+        with open(FAVORITES_FILE, encoding="utf-8") as f:
+            data = json.load(f)
+            return data if isinstance(data, list) else []
+    except (ValueError, OSError):
+        return []  # файл битый — начинаем с чистого листа
+
+
+def save_favorites(favorites):
+    """Сохраняет список избранного в файл."""
+    os.makedirs(DATA_DIR, exist_ok=True)
+    with open(FAVORITES_FILE, "w", encoding="utf-8") as f:
+        json.dump(favorites, f, ensure_ascii=False, indent=2)
+
+
+def add_favorite(text, url="", emotion=""):
+    """Добавляет пост в избранное, возвращает созданную запись."""
+    favorites = load_favorites()
+    entry = {
+        "id": uuid.uuid4().hex[:8],  # короткий случайный id
+        "text": (text or "").strip(),
+        "url": (url or "").strip(),
+        "emotion": emotion,
+        "created_at": datetime.now().strftime("%d.%m.%Y %H:%M"),
+    }
+    favorites.insert(0, entry)  # новые — сверху
+    save_favorites(favorites)
+    return entry
+
+
+def remove_favorite(fav_id):
+    """Удаляет пост из избранного по id."""
+    favorites = [f for f in load_favorites() if f.get("id") != fav_id]
+    save_favorites(favorites)
+
+
+@app.template_filter("vkdate")
+def vkdate_filter(timestamp):
+    """Превращает unix-время ВК в «15.09.2026 в 18:30»."""
+    try:
+        return datetime.fromtimestamp(int(timestamp)).strftime("%d.%m.%Y в %H:%M")
+    except (ValueError, TypeError, OSError):
+        return "—"
+
+
+def build_page_context(**overrides):
+    """
+    Собирает общие данные для шаблона: избранное, отложка, статус ВК.
+    Чтобы не дублировать код в каждом роуте.
+    """
+    vk = get_vk_settings()
+    try:
+        postponed = vk_get_postponed() if vk["configured"] else []
+        postponed_error = None
+    except VkError as err:
+        postponed = []
+        postponed_error = str(err)
+    context = {
+        "emotions": EMOTIONS,
+        "models": CLOUD_MODELS,
+        "default_model": get_default_model(),
+        "vk_configured": vk["configured"],
+        "vk_group_id": vk["group_id"],
+        "favorites": load_favorites(),
+        "postponed": postponed,
+        "postponed_error": postponed_error,
+        "post": None,
+        "error": None,
+        "notice": None,
+        "vk_msg": None,
+        "fav_msg": None,
+        "form": None,
+        "page": None,
+    }
+    context.update(overrides)
+    return context
+
+
+# ============================================================
+# ЧАСТЬ 7. СТРАНИЦЫ САЙТА
 # ============================================================
 
 @app.route("/")
 def index():
     """Главная страница с формой. Обычный GET-запрос."""
-    return render_template(
-"index.html",
-        post=None,
-        error=None,
-        form=None,
-        page=None,
-        emotions=EMOTIONS,
-        models=CLOUD_MODELS,
-        default_model=get_default_model(),
-    )
+    return render_template("index.html", **build_page_context())
 
 
 @app.route("/generate", methods=["POST"])
@@ -442,14 +675,13 @@ def generate():
     if not url:
         return render_template(
             "index.html",
-            post=None,
-            error="Пожалуйста, вставь ссылку на новость или статью.",
-            form=form_data,
-            page=None,
-            notice=None,
-            emotions=EMOTIONS,
-            models=CLOUD_MODELS,
-            default_model=get_default_model(),
+            **build_page_context(
+                post=None,
+                error="Пожалуйста, вставь ссылку на новость или статью.",
+                form=form_data,
+                page=None,
+                notice=None,
+            ),
         )
 
     # Настройки голоса из voice.md
@@ -470,16 +702,15 @@ def generate():
     if page is None and not extra_note:
         return render_template(
             "index.html",
-            post=None,
-            error=fetch_failed_reason
-            + " Опиши суть новости своими словами в поле «Дополнительно о новости» — "
-            + "тогда пост соберётся по твоему описанию.",
-            form=form_data,
-            page=None,
-            notice=None,
-            emotions=EMOTIONS,
-            models=CLOUD_MODELS,
-            default_model=get_default_model(),
+            **build_page_context(
+                post=None,
+                error=fetch_failed_reason
+                + " Опиши суть новости своими словами в поле «Дополнительно о новости» — "
+                + "тогда пост соберётся по твоему описанию.",
+                form=form_data,
+                page=None,
+                notice=None,
+            ),
         )
 
     # Шаг 2: собираем задание для модели
@@ -500,26 +731,187 @@ def generate():
     except ModelError as err:
         return render_template(
             "index.html",
-            post=None,
-            error=str(err),
-            form=form_data,
-            page=page,
-            notice=notice,
-            emotions=EMOTIONS,
-            models=CLOUD_MODELS,
-            default_model=get_default_model(),
+            **build_page_context(
+                post=None,
+                error=str(err),
+                form=form_data,
+                page=page,
+                notice=notice,
+            ),
         )
 
     return render_template(
         "index.html",
-        post=post,
-        error=None,
-        form=form_data,
-        page=page,
-        notice=notice,
-        emotions=EMOTIONS,
-        models=CLOUD_MODELS,
-        default_model=get_default_model(),
+        **build_page_context(
+            post=post,
+            error=None,
+            form=form_data,
+            page=page,
+            notice=notice,
+        ),
+    )
+
+
+@app.route("/publish", methods=["POST"])
+def publish():
+    """
+    Кнопка «Опубликовать пост»: шлёт текст на стену сообщества ВК прямо сейчас.
+    Текст берём из скрытого поля формы (сгенерированный пост).
+    """
+    text = request.form.get("post", "").strip()
+    form_data = {
+        "url": request.form.get("url", ""),
+        "extra": request.form.get("extra", ""),
+        "emotion": request.form.get("emotion", "joy"),
+        "model": request.form.get("model", get_default_model()),
+    }
+    if not text:
+        return render_template(
+            "index.html",
+            **build_page_context(post=None, error="Нечего публиковать: текст поста пустой.", form=form_data),
+        )
+    try:
+        post_id = vk_publish_post(text)
+    except VkError as err:
+        # Пост не потерялся: возвращаем его обратно на страницу вместе с ошибкой
+        return render_template(
+            "index.html", **build_page_context(post=text, error=str(err), form=form_data)
+        )
+    return render_template(
+        "index.html",
+        **build_page_context(
+            post=text,
+            form=form_data,
+            vk_msg=f"Пост опубликован в сообществе! ID поста в ВК: {post_id} 🎉",
+        ),
+    )
+
+
+@app.route("/schedule", methods=["POST"])
+def schedule():
+    """
+    Отложенный пост: публикуем в ВК с publish_date.
+    Дату и время берём из поля datetime-local (вид «2026-09-15T18:30»).
+    ВК сам выложит пост в это время — наш сервер для этого не нужен.
+    """
+    text = request.form.get("post", "").strip()
+    publish_time_str = request.form.get("publish_time", "").strip()
+    form_data = {
+        "url": request.form.get("url", ""),
+        "extra": request.form.get("extra", ""),
+        "emotion": request.form.get("emotion", "joy"),
+        "model": request.form.get("model", get_default_model()),
+    }
+    if not text:
+        return render_template(
+            "index.html",
+            **build_page_context(post=None, error="Нечего планировать: текст поста пустой.", form=form_data),
+        )
+    if not publish_time_str:
+        return render_template(
+            "index.html",
+            **build_page_context(post=text, error="Выбери дату и время для отложенного поста.", form=form_data),
+        )
+    # Разбираем «2026-09-15T18:30» в unix-время
+    try:
+        chosen = datetime.strptime(publish_time_str, "%Y-%m-%dT%H:%M")
+        publish_timestamp = int(chosen.timestamp())
+    except ValueError:
+        return render_template(
+            "index.html",
+            **build_page_context(post=text, error="Непонятная дата. Выбери её через календарь.", form=form_data),
+        )
+    try:
+        post_id = vk_publish_post(text, publish_timestamp=publish_timestamp)
+    except VkError as err:
+        return render_template(
+            "index.html", **build_page_context(post=text, error=str(err), form=form_data)
+        )
+    nice_date = chosen.strftime("%d.%m.%Y в %H:%M")
+    return render_template(
+        "index.html",
+        **build_page_context(
+            post=text,
+            form=form_data,
+            vk_msg=f"Отложенный пост запланирован на {nice_date}! ID в ВК: {post_id} ⏰",
+        ),
+    )
+
+
+@app.route("/scheduled/delete", methods=["POST"])
+def scheduled_delete():
+    """Отмена отложенного поста (удаляет его из очереди ВК)."""
+    post_id = request.form.get("post_id", "").strip()
+    # Сохраняем текущий пост на экране, чтобы он не пропал
+    current_post = request.form.get("post", "")
+    form_data = {
+        "url": request.form.get("url", ""),
+        "extra": request.form.get("extra", ""),
+        "emotion": request.form.get("emotion", "joy"),
+        "model": request.form.get("model", get_default_model()),
+    }
+    try:
+        vk_delete_post(post_id)
+        msg = f"Отложенный пост {post_id} отменён."
+    except (VkError, ValueError) as err:
+        return render_template(
+            "index.html",
+            **build_page_context(post=current_post or None, error=str(err), form=form_data or None),
+        )
+    return render_template(
+        "index.html",
+        **build_page_context(post=current_post or None, form=form_data or None, vk_msg=msg),
+    )
+
+
+@app.route("/favorites/add", methods=["POST"])
+def favorites_add():
+    """Кнопка «В избранное»: сохраняет текст поста в data/favorites.json."""
+    text = request.form.get("post", "").strip()
+    form_data = {
+        "url": request.form.get("url", ""),
+        "extra": request.form.get("extra", ""),
+        "emotion": request.form.get("emotion", "joy"),
+        "model": request.form.get("model", get_default_model()),
+    }
+    if not text:
+        return render_template(
+            "index.html",
+            **build_page_context(post=None, error="Нечего сохранять: текст поста пустой.", form=form_data),
+        )
+    # Не плодим дубли: если такой текст уже есть — просто скажем об этом
+    if any(f.get("text") == text for f in load_favorites()):
+        return render_template(
+            "index.html",
+            **build_page_context(post=text, form=form_data, fav_msg="Этот пост уже есть в избранном ⭐"),
+        )
+    add_favorite(text, url=form_data["url"], emotion=form_data["emotion"])
+    return render_template(
+        "index.html",
+        **build_page_context(post=text, form=form_data, fav_msg="Сохранено в избранное ⭐"),
+    )
+
+
+@app.route("/favorites/delete", methods=["POST"])
+def favorites_delete():
+    """Удаляет пост из избранного по его id."""
+    fav_id = request.form.get("fav_id", "").strip()
+    current_post = request.form.get("post", "")
+    form_data = {
+        "url": request.form.get("url", ""),
+        "extra": request.form.get("extra", ""),
+        "emotion": request.form.get("emotion", "joy"),
+        "model": request.form.get("model", get_default_model()),
+    }
+    if fav_id:
+        remove_favorite(fav_id)
+    return render_template(
+        "index.html",
+        **build_page_context(
+            post=current_post or None,
+            form=form_data if any(form_data.values()) else None,
+            fav_msg="Удалено из избранного.",
+        ),
     )
 
 

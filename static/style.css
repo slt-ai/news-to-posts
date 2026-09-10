@@ -250,3 +250,162 @@ input[type="radio"]:checked + .mood-chip {
 .copy-msg.visible {
   display: block;
 }
+
+/* ---------- ВКонтакте: статус и кнопки ---------- */
+.vk-box {
+  font-weight: 600;
+}
+
+.vk-ok {
+  border-left: 6px solid #22a45d;
+  color: #1c7a45;
+}
+
+.vk-off {
+  border-left: 6px solid #e0a400;
+  color: #8a6d00;
+}
+
+.success-box {
+  border-left: 6px solid #22a45d;
+  color: #1c7a45;
+  font-weight: 600;
+}
+
+.fav-notice {
+  border-left: 6px solid #e0a400;
+  color: #8a6d00;
+  font-weight: 600;
+}
+
+.action-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-top: 14px;
+  align-items: center;
+}
+
+.inline-form {
+  display: inline;
+  margin: 0;
+}
+
+.btn-publish,
+.btn-fav,
+.btn-schedule {
+  padding: 12px 20px;
+  border: none;
+  border-radius: 10px;
+  font-size: 15px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.btn-publish {
+  background: #0077ff;
+  color: #fff;
+}
+
+.btn-publish:hover:not(:disabled) {
+  box-shadow: 0 6px 18px rgba(0, 119, 255, 0.4);
+}
+
+.btn-publish:disabled,
+.btn-schedule:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.btn-fav {
+  background: transparent;
+  border: 2px solid #e0a400;
+  color: #8a6d00;
+}
+
+.btn-fav:hover {
+  background: #e0a400;
+  color: #fff;
+}
+
+.btn-schedule {
+  background: #764ba2;
+  color: #fff;
+  white-space: nowrap;
+}
+
+.schedule-form {
+  margin-top: 18px;
+  padding: 14px;
+  background: #f7f8ff;
+  border: 2px dashed #c9d2ff;
+  border-radius: 10px;
+}
+
+.schedule-form label {
+  display: block;
+  margin-bottom: 8px;
+  font-size: 14px;
+}
+
+.schedule-row {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.schedule-row input[type="datetime-local"] {
+  flex: 1;
+  min-width: 200px;
+}
+
+.list-item {
+  border-top: 1px solid #eee;
+  padding: 14px 0;
+}
+
+.list-item:first-of-type {
+  border-top: none;
+}
+
+.post-box.small {
+  font-size: 14px;
+  max-height: 160px;
+  overflow-y: auto;
+}
+
+.btn-danger {
+  padding: 8px 14px;
+  border: 2px solid #e0245e;
+  border-radius: 10px;
+  background: transparent;
+  color: #e0245e;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.btn-danger:hover {
+  background: #e0245e;
+  color: #fff;
+}
+
+.small-btn {
+  padding: 8px 14px;
+  font-size: 13px;
+}
+
+input[type="datetime-local"] {
+  width: 100%;
+  padding: 12px 14px;
+  border: 2px solid #e3e3e3;
+  border-radius: 10px;
+  font-size: 15px;
+  font-family: inherit;
+  outline: none;
+}
+
+input[type="datetime-local"]:focus {
+  border-color: var(--accent);
+}

@@ -15,6 +15,13 @@
       <p class="subtitle">Вставь ссылку на новость или статью — нейросеть изучит текст и напишет живой пост.</p>
     </header>
 
+    <!-- Статус подключения ВКонтакте -->
+    {% if vk_configured %}
+      <div class="card vk-box vk-ok">✅ ВКонтакте подключён (сообщество ID {{ vk_group_id }}). Можно публиковать и планировать посты.</div>
+    {% else %}
+      <div class="card vk-box vk-off">⚠️ ВКонтакте не подключён. Публикация и отложка не работают, пока не заполнишь VK_ACCESS_TOKEN и VK_GROUP_ID в .env. Инструкция — в файле ВК_ИНСТРУКЦИЯ.md</div>
+    {% endif %}
+
     <!-- Блок с ошибкой, если что-то пошло не так -->
     {% if error %}
       <div class="card error-box">⚠️ {{ error }}</div>
@@ -23,6 +30,14 @@
     <!-- Информационное сообщение (например, что пост собран по описанию) -->
     {% if notice %}
       <div class="card notice-box">ℹ️ {{ notice }}</div>
+    {% endif %}
+
+    {% if vk_msg %}
+      <div class="card success-box">🎉 {{ vk_msg }}</div>
+    {% endif %}
+
+    {% if fav_msg %}
+      <div class="card fav-notice">⭐ {{ fav_msg }}</div>
     {% endif %}
 
     <!-- Форма: пользователь вставляет ссылку на новость -->
@@ -82,18 +97,102 @@
           <p class="meta">📄 Страница: {{ page.title }}</p>
         {% endif %}
 
-        <!-- Текст поста от модели. Фильтр autoescape экранирует HTML-код,
-             а настоящие переводы строк показывает CSS
-             (white-space: pre-wrap в style.css). -->
         <div class="post-box" id="generated-post">{{ post }}</div>
 
-        <!-- Кнопка «Скопировать пост» -->
-        <button type="button" id="copy-btn" class="btn-secondary">Скопировать пост</button>
+        <div class="action-row">
+          <!-- Кнопка «Скопировать пост» -->
+          <button type="button" id="copy-btn" class="btn-secondary">Скопировать пост</button>
+
+          <!-- Кнопка «Опубликовать пост» — сразу на стену сообщества -->
+          <form method="POST" action="/publish" class="inline-form" onsubmit="return confirm('Опубликовать этот пост на стене сообщества прямо сейчас?')">
+            <input type="hidden" name="post" value="{{ post }}" />
+            <input type="hidden" name="url" value="{{ form.url if form }}" />
+            <input type="hidden" name="extra" value="{{ form.extra if form }}" />
+            <input type="hidden" name="emotion" value="{{ form.emotion if form else 'joy' }}" />
+            <input type="hidden" name="model" value="{{ form.model if form else default_model }}" />
+            <button type="submit" class="btn-publish" {% if not vk_configured %}disabled title="Сначала подключи ВКонтакте в .env"{% endif %}>🚀 Опубликовать пост</button>
+          </form>
+
+          <!-- Кнопка «В избранное» -->
+          <form method="POST" action="/favorites/add" class="inline-form">
+            <input type="hidden" name="post" value="{{ post }}" />
+            <input type="hidden" name="url" value="{{ form.url if form }}" />
+            <input type="hidden" name="emotion" value="{{ form.emotion if form else 'joy' }}" />
+            <input type="hidden" name="model" value="{{ form.model if form else default_model }}" />
+            <button type="submit" class="btn-fav">⭐ В избранное</button>
+          </form>
+        </div>
+
+        <!-- Отложенная публикация: выбор конкретного времени -->
+        <form method="POST" action="/schedule" class="schedule-form">
+          <input type="hidden" name="post" value="{{ post }}" />
+          <input type="hidden" name="url" value="{{ form.url if form }}" />
+          <input type="hidden" name="extra" value="{{ form.extra if form }}" />
+          <input type="hidden" name="emotion" value="{{ form.emotion if form else 'joy' }}" />
+          <input type="hidden" name="model" value="{{ form.model if form else default_model }}" />
+          <label for="publish_time"><strong>⏰ Отложенный пост:</strong> выбери дату и время</label>
+          <div class="schedule-row">
+            <input type="datetime-local" id="publish_time" name="publish_time" required />
+            <button type="submit" class="btn-schedule" {% if not vk_configured %}disabled title="Сначала подключи ВКонтакте в .env"{% endif %}>Запланировать</button>
+          </div>
+          <p class="hint">ВК сам выложит пост в это время (минимум на 2 минуты позже текущего). Сервер держать включённым не нужно.</p>
+        </form>
 
         <!-- Сообщение «Пост скопирован» (по умолчанию скрыто) -->
         <p id="copy-msg" class="copy-msg">Пост скопирован ✅</p>
       {% else %}
         <p class="placeholder">... Здесь появится готовый пост по этой новости ...</p>
+      {% endif %}
+    </section>
+
+    <!-- Отложенные посты (их хранит сам ВКонтакте) -->
+    <section class="card output">
+      <h2>⏰ Отложенные посты ({{ postponed|length }})</h2>
+      {% if not vk_configured %}
+        <p class="placeholder">Подключи ВКонтакте, чтобы видеть очередь отложенных постов.</p>
+      {% elif postponed_error %}
+        <p class="placeholder">Не получилось загрузить отложку: {{ postponed_error }}</p>
+      {% elif not postponed %}
+        <p class="placeholder">Пока ничего не запланировано. Сгенерируй пост и выбери время выше.</p>
+      {% else %}
+        {% for p in postponed %}
+          <div class="list-item">
+            <p class="meta">📅 {{ p.date | vkdate }} · ID {{ p.id }}</p>
+            <div class="post-box small">{{ p.text or "(без текста)" }}</div>
+            <form method="POST" action="/scheduled/delete" class="inline-form" onsubmit="return confirm('Отменить этот отложенный пост?')">
+              <input type="hidden" name="post_id" value="{{ p.id }}" />
+              <input type="hidden" name="post" value="{{ post or '' }}" />
+              <button type="submit" class="btn-danger">Отменить ❌</button>
+            </form>
+          </div>
+        {% endfor %}
+      {% endif %}
+    </section>
+
+    <!-- Избранное -->
+    <section class="card output">
+      <h2>⭐ Избранное ({{ favorites|length }})</h2>
+      {% if not favorites %}
+        <p class="placeholder">Пока пусто. Нажми «⭐ В избранное» под готовым постом, чтобы сохранить его сюда.</p>
+      {% else %}
+        {% for f in favorites %}
+          <div class="list-item">
+            <p class="meta">💾 {{ f.created_at }}{% if f.url %} · <a href="{{ f.url }}" target="_blank" rel="noopener">источник</a>{% endif %}</p>
+            <div class="post-box small">{{ f.text }}</div>
+            <div class="action-row">
+              <button type="button" class="btn-secondary btn-copy-fav">Копировать</button>
+              <form method="POST" action="/publish" class="inline-form" onsubmit="return confirm('Опубликовать этот пост из избранного?')">
+                <input type="hidden" name="post" value="{{ f.text }}" />
+                <button type="submit" class="btn-publish small-btn" {% if not vk_configured %}disabled title="Сначала подключи ВКонтакте"{% endif %}>🚀 Опубликовать</button>
+              </form>
+              <form method="POST" action="/favorites/delete" class="inline-form">
+                <input type="hidden" name="fav_id" value="{{ f.id }}" />
+                <input type="hidden" name="post" value="{{ post or '' }}" />
+                <button type="submit" class="btn-danger">Удалить</button>
+              </form>
+            </div>
+          </div>
+        {% endfor %}
       {% endif %}
     </section>
 
