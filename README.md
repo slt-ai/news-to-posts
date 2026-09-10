@@ -45,10 +45,8 @@ site-generation-post/
 
 ## Примеры генерации
 
-<div style="display:flex; justify-content:center; gap:8px;">
-  <img src="screenshots/screenshot-1.jpg" alt="Пример генерации 1" width="45%">
-  <img src="screenshots/screenshot-2.jpg" alt="Пример генерации 2" width="45%">
-</div>
+- [Пример 1: генерация поста, публикация в ВК и отложка](screenshots/screenshot-1.png)
+- [Пример 2: очередь отложенных постов и избранное](screenshots/screenshot-2.png)
 
 ---
 
